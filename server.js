@@ -259,7 +259,6 @@ app.get('/search', async (req, res) => {
         rating: book.rating,
         genres: book.genres,
     		isbn: book.isbn,
-        tags: book.tags || undefined,
         series: book.series ? [{
           series: book.series,
           sequence: book.seriesIndex ? book.seriesIndex.toString() : undefined
