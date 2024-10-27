@@ -259,6 +259,13 @@ app.get('/search', async (req, res) => {
         rating: book.rating,
         genres: book.genres,
     		isbn: book.isbn,
+        tags: book.tags || undefined,
+        series: book.series ? [{
+          series: book.series,
+          sequence: book.seriesIndex ? book.seriesIndex.toString() : undefined
+        }] : undefined,
+        language: book.languages && book.languages.length > 0 ? book.languages[0] : undefined,
+        duration: book.duration || undefined
       })),
     };
     
