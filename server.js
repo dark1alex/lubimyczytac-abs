@@ -53,11 +53,18 @@ class LubimyCzytacProvider {
   async searchBooks(query, author = '') {
     
     await this.throttle(); // Wait until we can make a new request
-    
+
     try {
       console.log(`Input details: "${query}" by "${author}"`);
       
+      if (!author) {
+      // If author is empty, get it from query
       author = query.split("-")[0].replace(/\./g, " ").trim();
+      } else {
+      // If author is not empty get from author field
+      author = author.split("-")[0].replace(/\./g, " ").trim();
+      }
+	  
       console.log("Now we have author: ", author);
       
       let cleanedTitle = query;
