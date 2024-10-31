@@ -4,9 +4,13 @@ const cheerio = require('cheerio');
 const cors = require('cors');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 
 app.use(cors());
+
+
+let lastRequestTime = 0; // Variable to store the timestamp of the last request
+
 
 // Middleware to check for AUTHORIZATION header
 app.use((req, res, next) => {
@@ -14,6 +18,8 @@ app.use((req, res, next) => {
   if (!apiKey) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  // Here you would typically validate the API key
+  // For now, we'll just pass it through
   next();
 });
 
@@ -29,10 +35,54 @@ class LubimyCzytacProvider {
     return this.textDecoder.decode(new TextEncoder().encode(text));
   }
 
+
+  // Throttling function to ensure only one request every 10 seconds
+  async throttle() {
+      const now = Date.now();
+      const delay = 10000; // 10 seconds
+  
+      if (now - lastRequestTime < delay) {
+        const waitTime = delay - (now - lastRequestTime);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+  
+      lastRequestTime = Date.now();
+    }
+
+
   async searchBooks(query, author = '') {
+    
+    await this.throttle(); // Wait until we can make a new request
+    
     try {
-      console.log(`Searching for: "${query}" by "${author}"`);
-      let searchUrl = `${this.baseUrl}/szukaj/ksiazki?phrase=${encodeURIComponent(query)}`;
+      console.log(`Input details: "${query}" by "${author}"`);
+      
+      author = query.split("-")[0].replace(/\./g, " ").trim();
+      console.log("Now we have author: ", author);
+      
+      let cleanedTitle = query;
+      cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
+                                .replace(/^[\w\s.-]+-\s*/g, '') // Remove author information
+                                .replace(/czyt.*/gi, '') // Remove narrator information (all forms of 'czyt')
+                                .replace(/.*-/, '') // Remove everything before the last hyphen
+                                .replace(/.*?(T[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TXX onwards
+                                .replace(/.*?(Tom[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TomXX onwards
+
+                                .replace(/\(\d{4}\)/g, '') // Remove year
+                                .replace(/\(.*?\)/g, '') // Remove anything within brackets
+                                .replace(/\[.*?\]/g, '') // Remove anything within square brackets
+                                .replace(/\(/g, ' ') // Replace opening brackets with spaces
+                                .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
+                                .replace(/\./g, ' ') // Replace dots with spaces
+                                .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
+                                .replace(/superprodukcja/i, '')
+                                .trim();
+
+      console.log("Now we have cleaned title: ", cleanedTitle);
+
+    
+
+      let searchUrl = `${this.baseUrl}/szukaj/ksiazki?phrase=${encodeURIComponent(cleanedTitle)}`;
       
       if (author) {
         searchUrl += `&author=${encodeURIComponent(author)}`;
@@ -52,7 +102,7 @@ class LubimyCzytacProvider {
         const $book = $(element);
         const $bookInfo = $book.find('.authorAllBooks__singleText');
   
-        const title = this.cleanTitle($bookInfo.find('.authorAllBooks__singleTextTitle').text().trim());
+        const title = $bookInfo.find('.authorAllBooks__singleTextTitle').text().trim();
         const bookUrl = $bookInfo.find('.authorAllBooks__singleTextTitle').attr('href');
         const authors = $bookInfo.find('a[href*="/autor/"]').map((i, el) => $(el).text().trim()).get();
   
@@ -77,7 +127,7 @@ class LubimyCzytacProvider {
   
       const fullMetadata = await Promise.all(matches.map(match => this.getFullMetadata(match)));
   
-      console.log('Final search results:', JSON.stringify(fullMetadata, null, 2));
+//      console.log('Final search results:', JSON.stringify(fullMetadata, null, 2));
       return { matches: fullMetadata };
     } catch (error) {
       console.error('Error searching books:', error.message, error.stack);
@@ -87,7 +137,7 @@ class LubimyCzytacProvider {
 
   async getFullMetadata(match) {
     try {
-      console.log(`Fetching full metadata for: ${match.title}`);
+//      console.log(`Fetching full metadata for: ${match.title}`);
       const response = await axios.get(match.url, { responseType: 'arraybuffer' });
       const decodedData = this.decodeText(response.data);
       const $ = cheerio.load(decodedData);
@@ -99,6 +149,8 @@ class LubimyCzytacProvider {
       const seriesElement = $('span.d-none.d-sm-block.mt-1:contains("Cykl:") a').text().trim();
       const series = this.extractSeriesName(seriesElement);
       const seriesIndex = this.extractSeriesIndex(seriesElement);
+      //const series = $('a[href*="/cykl/"]').text().trim() || '';
+      //const seriesIndex = this.extractSeriesIndex(series);
       const genres = this.extractGenres($);
       const tags = this.extractTags($);
       const rating = parseFloat($('meta[property="books:rating:value"]').attr('content')) / 2 || null;
@@ -126,31 +178,24 @@ class LubimyCzytacProvider {
         seriesIndex,
         genres,
         tags,
-        isbn,
         identifiers: {
+          isbn,
           lubimyczytac: match.id,
         },
       };
 
-      console.log(`Full metadata for ${match.title}:`, JSON.stringify(fullMetadata, null, 2));
+//      console.log(`Full metadata for ${match.title}:`, JSON.stringify(fullMetadata, null, 2));
       return fullMetadata;
     } catch (error) {
       console.error(`Error fetching full metadata for ${match.title}:`, error.message, error.stack);
-      return match; // Return basic metadata if full metadata fetch fails
+      // Return basic metadata if full metadata fetch fails
+      return match;
     }
-  }
-
-  cleanTitle(title) {
-    // Replace dots, hyphens, and slashes with spaces
-    return title
-      .replace(/(\.|\-|\/)/g, ' ') // Replace dots, hyphens, and slashes with spaces
-      .replace(/(?:\(czyta [^\)]+\)|\[\d+\]|-\s*\d+\s*kbps|\d+\s*kbps)?/g, '') // Remove extraneous info
-      .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
-      .trim(); // Trim leading/trailing spaces
   }
 
   extractSeriesName(seriesElement) {
     if (!seriesElement) return null;
+    // Remove the "(tom x)" part
     return seriesElement.replace(/\s*\(tom \d+.*?\)\s*$/, '').trim();
   }
 
@@ -159,6 +204,17 @@ class LubimyCzytacProvider {
     const match = seriesElement.match(/\(tom (\d+)/);
     return match ? parseInt(match[1]) : null;
   }
+
+  // extractSeriesIndex(series) {
+  //   if (series && series.includes('tom ')) {
+  //     const seriesInfo = series.split('tom ')[1].replace(')', '').trim();
+  //     if (seriesInfo.includes('-')) {
+  //       return parseInt(seriesInfo.split('-')[0]);
+  //     }
+  //     return parseFloat(seriesInfo);
+  //   }
+  //   return null;
+  // }
 
   extractPublishedDate($) {
     const dateText = $('dt[title*="Data pierwszego wydania"]').next('dd').text().trim();
@@ -232,8 +288,8 @@ class LubimyCzytacProvider {
 const provider = new LubimyCzytacProvider();
 
 app.get('/search', async (req, res) => {
-  try {
-    console.log('Received search request:', req.query);
+    try {
+//    console.log('Received search request:', req.query);
     const query = req.query.query;
     const author = req.query.author;
 
@@ -243,6 +299,7 @@ app.get('/search', async (req, res) => {
 
     const results = await provider.searchBooks(query, author);
     
+    // Format the response according to the OpenAPI specification
     const formattedResults = {
       matches: results.matches.map(book => ({
         title: book.title,
@@ -250,25 +307,30 @@ app.get('/search', async (req, res) => {
         author: book.authors.join(', '),
         narrator: book.narrator || undefined,
         publisher: book.publisher || undefined,
-        publishedYear: book.publishedDate ? new Date(book.publishedDate).getFullYear() : undefined,
-        description: book.description,
-        cover: book.cover,
-        url: book.url,
-        source: book.source,
-        tags: book.tags,
-        rating: book.rating,
-        genres: book.genres,
-    		isbn: book.isbn,
-      })),
+        publishedYear: book.publishedDate ? new Date(book.publishedDate).getFullYear().toString() : undefined,
+        description: book.description || undefined,
+        cover: book.cover || undefined,
+        isbn: book.identifiers?.isbn || undefined,
+        asin: book.identifiers?.asin || undefined,
+        genres: book.genres || undefined,
+        tags: book.tags || undefined,
+        series: book.series ? [{
+          series: book.series,
+          sequence: book.seriesIndex ? book.seriesIndex.toString() : undefined
+        }] : undefined,
+        language: book.languages && book.languages.length > 0 ? book.languages[0] : undefined,
+        duration: book.duration || undefined
+      }))
     };
-    
+
+//    console.log('Sending response:', JSON.stringify(formattedResults, null, 2));
     res.json(formattedResults);
   } catch (error) {
-    console.error('Error handling search request:', error.message);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`LubimyCzytac provider listening on port ${port}`);
 });
