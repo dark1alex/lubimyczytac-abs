@@ -55,10 +55,22 @@ class LubimyCzytacProvider {
     await this.throttle(); // Wait until we can make a new request
     
     try {
+      const currentTime = new Date().toLocaleString("pl-PL", {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      console.log(`------------------------------------------------------------------------------------------------`);
+      console.log(`Current time: ${currentTime}`);
+      
       console.log(`Input details: "${query}" by "${author}"`);
       
       author = query.split("-")[0].replace(/\./g, " ").trim();
-      console.log("Now we have author: ", author);
+      console.log("Extracted author: ", author);
       
       let cleanedTitle = query;
       cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
@@ -67,6 +79,8 @@ class LubimyCzytacProvider {
                                 .replace(/.*-/, '') // Remove everything before the last hyphen
                                 .replace(/.*?(T[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TXX onwards
                                 .replace(/.*?(Tom[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TomXX onwards
+                                .replace(/.*?\(\d{1,3}\)\s*/g, '') // Remove anything before (XX) if present
+                                .replace(/.*?(Etap[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched EtapXX onwards
 
                                 .replace(/\(\d{4}\)/g, '') // Remove year
                                 .replace(/\(.*?\)/g, '') // Remove anything within brackets
@@ -75,10 +89,11 @@ class LubimyCzytacProvider {
                                 .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
                                 .replace(/\./g, ' ') // Replace dots with spaces
                                 .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
+                                .replace(/Bournea/g, "Bourne")
                                 .replace(/superprodukcja/i, '')
                                 .trim();
 
-      console.log("Now we have cleaned title: ", cleanedTitle);
+      console.log("Extracted title: ", cleanedTitle);
 
     
 
