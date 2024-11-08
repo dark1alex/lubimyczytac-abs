@@ -66,7 +66,7 @@ class LubimyCzytacProvider {
       });
       console.log(`------------------------------------------------------------------------------------------------`);
       console.log(`Current time: ${currentTime}`);
-      n
+      
       console.log(`Input details: "${query}" by "${author}"`);
       
       author = query.split("-")[0].replace(/\./g, " ").trim();
