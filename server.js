@@ -69,7 +69,14 @@ class LubimyCzytacProvider {
       
       console.log(`Input details: "${query}" by "${author}"`);
       
-      author = query.split("-")[0].replace(/\./g, " ").trim();
+      if (!author) {
+        // If author is empty, get it from query
+        author = query.split("-")[0].replace(/\./g, " ").trim();
+        } else {
+        // If author is not empty get from author field
+        author = author.split("-")[0].replace(/\./g, " ").trim();
+        }
+
       console.log("Extracted author: ", author);
       
       let cleanedTitle = query;
