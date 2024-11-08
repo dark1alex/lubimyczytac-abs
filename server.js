@@ -80,27 +80,34 @@ class LubimyCzytacProvider {
       console.log("Extracted author: ", author);
       
       let cleanedTitle = query;
-      cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
-                                .replace(/\bVBR\b.*$/gi, '') // Remove VBR
-                                .replace(/^[\w\s.-]+-\s*/g, '') // Remove author information
-                                .replace(/czyt.*/gi, '') // Remove narrator information (all forms of 'czyt')
-                                .replace(/.*-/, '') // Remove everything before the last hyphen
-                                .replace(/.*?(T[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TXX onwards
-                                .replace(/.*?(Tom[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TomXX onwards
-                                .replace(/.*?\(\d{1,3}\)\s*/g, '') // Remove anything before (XX) if present
-                                .replace(/.*?(Etap[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched EtapXX onwards
+      // We want to clean only the titles that are not in quotation marks. 
+      // Usefull e.g. when we want to search for a specific string and skip all the cleaning.
+      if (!/^".*"$/.test(cleanedTitle)) {
+        cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
+                                  .replace(/\bVBR\b.*$/gi, '') // Remove VBR
+                                  .replace(/^[\w\s.-]+-\s*/g, '') // Remove author information
+                                  .replace(/czyt.*/gi, '') // Remove narrator information (all forms of 'czyt')
+                                  .replace(/.*-/, '') // Remove everything before the last hyphen
+                                  .replace(/.*?(T[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TXX onwards
+                                  .replace(/.*?(Tom[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TomXX onwards
+                                  .replace(/.*?\(\d{1,3}\)\s*/g, '') // Remove anything before (XX) if present
+                                  .replace(/.*?(Etap[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched EtapXX onwards
 
-                                .replace(/\(\d{4}\)/g, '') // Remove year
-                                .replace(/\(.*?\)/g, '') // Remove anything within brackets
-                                .replace(/\[.*?\]/g, '') // Remove anything within square brackets
-                                .replace(/\(/g, ' ') // Replace opening brackets with spaces
-                                .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
-                                .replace(/\./g, ' ') // Replace dots with spaces
-                                .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
-                                .replace(/Bournea/g, "Bourne")
-                                .replace(/superprodukcja/i, '')
-                                .trim();
-
+                                  .replace(/\(\d{4}\)/g, '') // Remove year
+                                  .replace(/\(.*?\)/g, '') // Remove anything within brackets
+                                  .replace(/\[.*?\]/g, '') // Remove anything within square brackets
+                                  .replace(/\(/g, ' ') // Replace opening brackets with spaces
+                                  .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
+                                  .replace(/\./g, ' ') // Replace dots with spaces
+                                  .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
+                                  .replace(/Bournea/g, "Bourne")
+                                  .replace(/superprodukcja/i, '')
+                                  .trim();
+      } else {
+          // Remove quotes only if they are at the start and end of the string
+          cleanedTitle = cleanedTitle.replace(/^"(.*)"$/, '$1');
+      }
+      
       console.log("Extracted title: ", cleanedTitle);
 
     
