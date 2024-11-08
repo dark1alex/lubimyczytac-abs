@@ -66,7 +66,7 @@ class LubimyCzytacProvider {
       });
       console.log(`------------------------------------------------------------------------------------------------`);
       console.log(`Current time: ${currentTime}`);
-      
+      n
       console.log(`Input details: "${query}" by "${author}"`);
       
       author = query.split("-")[0].replace(/\./g, " ").trim();
@@ -74,6 +74,7 @@ class LubimyCzytacProvider {
       
       let cleanedTitle = query;
       cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
+                                .replace(/\bVBR\b.*$/gi, '') // Remove VBR
                                 .replace(/^[\w\s.-]+-\s*/g, '') // Remove author information
                                 .replace(/czyt.*/gi, '') // Remove narrator information (all forms of 'czyt')
                                 .replace(/.*-/, '') // Remove everything before the last hyphen
