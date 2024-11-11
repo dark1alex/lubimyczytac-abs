@@ -69,8 +69,8 @@ class LubimyCzytacProvider {
       console.log(`Current time: ${currentTime}`);
       console.log(`Input details: "${query}" by "${author}"`);
       
-      if (!author) {
-        // If author is empty, get it from query
+      if (!author && query.includes("-")) {
+        // If author is empty and we suspect author is in the query, get it from query
         author = query.split("-")[0].replace(/\./g, " ").trim();
         } else {
         // If author is not empty get from author field
