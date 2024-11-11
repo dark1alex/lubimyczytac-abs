@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const cors = require('cors');
+const stringSimilarity = require('string-similarity');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -47,12 +48,12 @@ class LubimyCzytacProvider {
       }
   
       lastRequestTime = Date.now();
-    }
+  }
 
 
   async searchBooks(query, author = '') {
     
-    await this.throttle(); // Wait until we can make a new request
+  await this.throttle(); // Wait until we can make a new request
     
     try {
       const currentTime = new Date().toLocaleString("pl-PL", {
@@ -64,9 +65,8 @@ class LubimyCzytacProvider {
         second: '2-digit',
         hour12: false
       });
-      console.log(`------------------------------------------------------------------------------------------------`);
+
       console.log(`Current time: ${currentTime}`);
-      
       console.log(`Input details: "${query}" by "${author}"`);
       
       if (!author) {
@@ -99,6 +99,14 @@ class LubimyCzytacProvider {
                                   .replace(/\(/g, ' ') // Replace opening brackets with spaces
                                   .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
                                   .replace(/\./g, ' ') // Replace dots with spaces
+                                  .replace(/Roch Siemianowski/g, '') // Replace polish narrator
+                                  .replace(/Patrycja Potyralska/g, '') // Replace polish narrator
+                                  .replace(/Michał Breitenwald/g, '') // Replace polish narrator
+                                  .replace(/Maria Kozłowska/g, '') // Replace polish narrator
+                                  .replace(/Filip Kosior/g, '') // Replace polish narrator
+                                  .replace(/Tomasz Sobczak/g, '') // Replace polish narrator
+                                  .replace(/Marta Wardyńska/g, '') // Replace polish narrator
+                                  .replace(/Józef Pawłowski/g, '') // Replace polish narrator
                                   .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
                                   .replace(/Bournea/g, "Bourne")
                                   .replace(/superprodukcja/i, '')
@@ -110,24 +118,24 @@ class LubimyCzytacProvider {
       
       console.log("Extracted title: ", cleanedTitle);
 
-    
-
       let searchUrl = `${this.baseUrl}/szukaj/ksiazki?phrase=${encodeURIComponent(cleanedTitle)}`;
       
       if (author) {
         searchUrl += `&author=${encodeURIComponent(author)}`;
       }
-      
+
+      console.log('Search URL:', searchUrl);
+
       const response = await axios.get(searchUrl, { responseType: 'arraybuffer' });
       const decodedData = this.decodeText(response.data);
       const $ = cheerio.load(decodedData);
-  
-      console.log('Search URL:', searchUrl);
+
   
       const matches = [];
       const $books = $('.authorAllBooks__single');
       console.log('Number of books found:', $books.length);
   
+
       $books.each((index, element) => {
         const $book = $(element);
         const $bookInfo = $book.find('.authorAllBooks__singleText');
@@ -135,13 +143,20 @@ class LubimyCzytacProvider {
         const title = $bookInfo.find('.authorAllBooks__singleTextTitle').text().trim();
         const bookUrl = $bookInfo.find('.authorAllBooks__singleTextTitle').attr('href');
         const authors = $bookInfo.find('a[href*="/autor/"]').map((i, el) => $(el).text().trim()).get();
-  
+
+        const titleSimilarity = stringSimilarity.compareTwoStrings(title.toLowerCase(), cleanedTitle.toLowerCase()).toFixed(2);
+        const authorSimilarity = authors.map(authorFromMap => stringSimilarity.compareTwoStrings(authorFromMap.toLowerCase(), author.toLowerCase()).toFixed(2));
+
         console.log('Book title:', title);
         console.log('Book URL:', bookUrl);
         console.log('Authors:', authors);
+
+        console.log('Title similarity: ', titleSimilarity, '. Author similarity: ', authorSimilarity);
   
-        if (title && bookUrl && authors.length > 0) {
-          matches.push({
+        // Sometimes we don't know the author.
+        if (title && bookUrl && (authorSimilarity.some(similarity => parseFloat(similarity) > 0.3) || author == '')) {
+            console.log('---------- The one above looks like a great match. ----------');
+            matches.push({
             id: bookUrl.split('/').pop(),
             title: this.decodeUnicode(title),
             authors: authors.map(author => this.decodeUnicode(author)),
@@ -153,6 +168,11 @@ class LubimyCzytacProvider {
             },
           });
         }
+
+
+
+
+
       });
   
       const fullMetadata = await Promise.all(matches.map(match => this.getFullMetadata(match)));
@@ -319,7 +339,8 @@ const provider = new LubimyCzytacProvider();
 
 app.get('/search', async (req, res) => {
     try {
-//    console.log('Received search request:', req.query);
+    console.log(`------------------------------------------------------------------------------------------------`);
+    console.log('Received search request:', req.query);
     const query = req.query.query;
     const author = req.query.author;
 
@@ -353,7 +374,7 @@ app.get('/search', async (req, res) => {
       }))
     };
 
-//    console.log('Sending response:', JSON.stringify(formattedResults, null, 2));
+    console.log('Sending response:', JSON.stringify(formattedResults, null, 2));
     res.json(formattedResults);
   } catch (error) {
     console.error('Search error:', error);
