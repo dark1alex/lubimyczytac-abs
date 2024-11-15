@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const cors = require('cors');
+const stringSimilarity = require('string-similarity');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -47,7 +48,7 @@ class LubimyCzytacProvider {
       }
   
       lastRequestTime = Date.now();
-    }
+  }
 
 
   async searchBooks(query, author = '') {
@@ -55,56 +56,75 @@ class LubimyCzytacProvider {
     await this.throttle(); // Wait until we can make a new request
 
     try {
+      const currentTime = new Date().toLocaleString("pl-PL", {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+
+      console.log(`Current time: ${currentTime}`);
       console.log(`Input details: "${query}" by "${author}"`);
       
-      if (!author) {
-      // If author is empty, get it from query
-      author = query.split("-")[0].replace(/\./g, " ").trim();
-      } else {
-      // If author is not empty get from author field
-      author = author.split("-")[0].replace(/\./g, " ").trim();
-      }
-	  
-      console.log("Now we have author: ", author);
+      if (!author && query.includes("-")) {
+        // If author is empty and we suspect author is in the query, get it from query
+        author = query.split("-")[0].replace(/\./g, " ").trim();
+        } else {
+        // If author is not empty get from author field
+        author = author.split("-")[0].replace(/\./g, " ").trim();
+        }
+
+      console.log("Extracted author: ", author);
+
       
       let cleanedTitle = query;
-      cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
-                                .replace(/^[\w\s.-]+-\s*/g, '') // Remove author information
-                                .replace(/czyt.*/gi, '') // Remove narrator information (all forms of 'czyt')
-                                .replace(/.*-/, '') // Remove everything before the last hyphen
-                                .replace(/.*?(T[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TXX onwards
-                                .replace(/.*?(Tom[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TomXX onwards
-
-                                .replace(/\(\d{4}\)/g, '') // Remove year
-                                .replace(/\(.*?\)/g, '') // Remove anything within brackets
-                                .replace(/\[.*?\]/g, '') // Remove anything within square brackets
-                                .replace(/\(/g, ' ') // Replace opening brackets with spaces
-                                .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
-                                .replace(/\./g, ' ') // Replace dots with spaces
-                                .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
-                                .replace(/superprodukcja/i, '')
-                                .trim();
-
-      console.log("Now we have cleaned title: ", cleanedTitle);
-
-    
+      // We want to clean only the titles that are not in quotation marks. 
+      // Usefull e.g. when we want to search for a specific string and skip all the cleaning.
+      if (!/^".*"$/.test(cleanedTitle)) {
+        cleanedTitle = cleanedTitle.replace(/(\d+kbps)/g, '') // Remove bitrate
+                                  .replace(/\bVBR\b.*$/gi, '') // Remove VBR
+                                  .replace(/^[\w\s.-]+-\s*/g, '') // Remove author information
+                                  .replace(/czyt.*/gi, '') // Remove narrator information (all forms of 'czyt')
+                                  .replace(/.*-/, '') // Remove everything before the last hyphen
+                                  .replace(/.*?(T[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TXX onwards
+                                  .replace(/.*?(Tom[\s.]?\d{1,3}).*?(.*)$/i, '$2') // Keep everything from the matched TomXX onwards
+                                  .replace(/.*?\(\d{1,3}\)\s*/g, '') // Remove anything before (XX) if present
+                                  .replace(/\(.*?\)/g, '') // Remove anything within brackets
+                                  .replace(/\[.*?\]/g, '') // Remove anything within square brackets
+                                  .replace(/\(/g, ' ') // Replace opening brackets with spaces
+                                  .replace(/[^\p{L}\d]/gu, ' ') // Replace each non-letter and non-digit with a space, including Polish letters                                
+                                  .replace(/\./g, ' ') // Replace dots with spaces
+                                  .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
+                                  .replace(/superprodukcja/i, '')
+                                  .trim();
+      } else {
+          // Remove quotes only if they are at the start and end of the string
+          cleanedTitle = cleanedTitle.replace(/^"(.*)"$/, '$1');
+      }
+      
+      console.log("Extracted title: ", cleanedTitle);
 
       let searchUrl = `${this.baseUrl}/szukaj/ksiazki?phrase=${encodeURIComponent(cleanedTitle)}`;
       
       if (author) {
         searchUrl += `&author=${encodeURIComponent(author)}`;
       }
-      
+
+      console.log('Search URL:', searchUrl);
+
       const response = await axios.get(searchUrl, { responseType: 'arraybuffer' });
       const decodedData = this.decodeText(response.data);
       const $ = cheerio.load(decodedData);
-  
-      console.log('Search URL:', searchUrl);
+
   
       const matches = [];
       const $books = $('.authorAllBooks__single');
       console.log('Number of books found:', $books.length);
   
+
       $books.each((index, element) => {
         const $book = $(element);
         const $bookInfo = $book.find('.authorAllBooks__singleText');
@@ -112,13 +132,20 @@ class LubimyCzytacProvider {
         const title = $bookInfo.find('.authorAllBooks__singleTextTitle').text().trim();
         const bookUrl = $bookInfo.find('.authorAllBooks__singleTextTitle').attr('href');
         const authors = $bookInfo.find('a[href*="/autor/"]').map((i, el) => $(el).text().trim()).get();
-  
+
+        const titleSimilarity = stringSimilarity.compareTwoStrings(title.toLowerCase(), cleanedTitle.toLowerCase()).toFixed(2);
+        const authorSimilarity = authors.map(authorFromMap => stringSimilarity.compareTwoStrings(authorFromMap.toLowerCase(), author.toLowerCase()).toFixed(2));
+
         console.log('Book title:', title);
         console.log('Book URL:', bookUrl);
         console.log('Authors:', authors);
+
+        console.log('Title similarity: ', titleSimilarity, '. Author similarity: ', authorSimilarity);
   
-        if (title && bookUrl && authors.length > 0) {
-          matches.push({
+        // Sometimes we don't know the author.
+        if (title && bookUrl && (authorSimilarity.some(similarity => parseFloat(similarity) > 0.3) || author == '')) {
+            console.log('---------- The one above looks like a great match. ----------');
+            matches.push({
             id: bookUrl.split('/').pop(),
             title: this.decodeUnicode(title),
             authors: authors.map(author => this.decodeUnicode(author)),
@@ -130,6 +157,11 @@ class LubimyCzytacProvider {
             },
           });
         }
+
+
+
+
+
       });
   
       const fullMetadata = await Promise.all(matches.map(match => this.getFullMetadata(match)));
@@ -296,7 +328,8 @@ const provider = new LubimyCzytacProvider();
 
 app.get('/search', async (req, res) => {
     try {
-//    console.log('Received search request:', req.query);
+    console.log(`------------------------------------------------------------------------------------------------`);
+    console.log('Received search request:', req.query);
     const query = req.query.query;
     const author = req.query.author;
 
@@ -330,7 +363,7 @@ app.get('/search', async (req, res) => {
       }))
     };
 
-//    console.log('Sending response:', JSON.stringify(formattedResults, null, 2));
+    console.log('Sending response:', JSON.stringify(formattedResults, null, 2));
     res.json(formattedResults);
   } catch (error) {
     console.error('Search error:', error);
